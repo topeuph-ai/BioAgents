@@ -20,6 +20,7 @@ import { initializeX402Service } from "./middleware/x402/service";
 import { b402Route } from "./routes/b402";
 import { b402ChatRoute } from "./routes/b402/chat";
 import { b402DeepResearchRoute } from "./routes/b402/deep-research";
+import { valichordRoute } from "./routes/valichord";
 import logger from "./utils/logger";
 
 // BullMQ Queue imports (conditional)
@@ -277,7 +278,10 @@ const app = new Elysia()
   // b402 payment routes - BNB Chain (USDT)
   .use(b402Route) // GET /api/b402/* for config, pricing, health
   .use(b402ChatRoute) // POST /api/b402/chat for payment-gated chat
-  .use(b402DeepResearchRoute); // POST /api/b402/deep-research/start, GET /api/b402/deep-research/status/:messageId
+  .use(b402DeepResearchRoute) // POST /api/b402/deep-research/start, GET /api/b402/deep-research/status/:messageId
+
+  // ValiChord validation route — BioAgents as AI reproducibility validator
+  .use(valichordRoute); // POST /api/valichord/validate
 
 // Mount Bull Board dashboard (only when job queue is enabled)
 const queueDashboard = createQueueDashboard();
