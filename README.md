@@ -100,6 +100,14 @@ Both routes use the same agent architecture but differ in their orchestration an
    - **Chat Mode**: Concise answers without next steps
    - Preserves inline citations throughout
 
+8. **[ValiChord Validator Agent](src/agents/valichord/)** - AI reproducibility validator
+   - Downloads a research deposit ZIP, inspects its contents, and attempts to reproduce key findings
+   - Submits a cryptographically-committed attestation to the ValiChord peer network
+   - Supports all disciplines: ComputationalBiology, MachineLearning, Neuroscience, and more
+   - Honest-by-design: FailedToReproduce with High confidence is more valuable than a spurious pass
+   - Exposed via `POST /api/valichord/validate`
+   - Requires `VALICHORD_API_URL` pointing to a running ValiChord bridge instance
+
 #### Adding New Agents
 
 To add a new agent:
@@ -305,6 +313,85 @@ bun run worker   # Worker process
 
 **📖 See [JOB_QUEUE.md](documentation/docs/JOB_QUEUE.md) for complete setup and configuration guide**
 
+## ValiChord Integration — AI Reproducibility Validator
+
+BioAgents can act as an AI validator in the [ValiChord](https://github.com/topeuph-ai/ValiChord)
+peer reproducibility protocol. ValiChord asks: *can an independent party arrive at the same
+result as the researcher?* BioAgents answers that question autonomously.
+
+> **ValiChord is not a blockchain.** It is an agent-centric distributed network where each
+> node maintains its own cryptographically-signed source chain. There are no miners, no tokens,
+> and no global consensus — only peer-to-peer attestation.
+
+### How It Works
+
+1. **Deposit arrives** — a researcher submits a study deposit (code + data ZIP) to ValiChord.
+2. **BioAgents validates** — `POST /api/valichord/validate` triggers the ValiChord Validator Agent.
+3. **AI reproduces** — BioAgents downloads the deposit, inspects the code, and attempts to
+   reproduce the key findings using its analysis capabilities.
+4. **Attestation submitted** — the agent submits a verdict (`Reproduced` / `PartiallyReproduced` /
+   `FailedToReproduce`) with confidence level and detailed notes to the ValiChord bridge API,
+   which commits it to the peer network.
+
+The attestation is honest by design: "Reproduced" means BioAgents obtained the **same result**
+as the researcher — not that the result is scientifically correct.
+
+### Setup
+
+1. Clone and run the ValiChord bridge API locally:
+   ```bash
+   cd path/to/ValiChord/backend
+   pip install -r requirements.txt
+   flask run  # starts at http://localhost:5000
+   ```
+
+2. Add to your `.env`:
+   ```bash
+   VALICHORD_API_URL=http://localhost:5000
+   VALICHORD_API_KEY=              # leave empty for local dev
+   ```
+
+### API
+
+**`POST /api/valichord/validate`**
+
+```json
+{
+  "depositUrl": "https://osf.io/abc123/download",
+  "discipline": { "type": "ComputationalBiology" },
+  "studyDescription": "Differential expression analysis of RNA-seq data comparing treatment vs control"
+}
+```
+
+Response:
+```json
+{
+  "data_hash": "e3b0c44298fc1c...",
+  "outcome": "Reproduced",
+  "confidence": "High",
+  "notes": "Ran main_analysis.R; all 47 p-values reproduced within floating point tolerance.",
+  "validator_attested": true,
+  "harmony_record_hash": "uhCkk...",
+  "harmony_record_url": "https://...",
+  "start": "2026-04-21T10:00:00Z",
+  "end": "2026-04-21T10:03:42Z"
+}
+```
+
+Supported disciplines: `ComputationalBiology`, `ClimateScience`, `SocialScience`,
+`Economics`, `Psychology`, `Neuroscience`, `MachineLearning`, `Other`.
+
+### Claude Code Skill
+
+The integration includes a `.claude/skills/valichord-validator/` skill that teaches
+Claude Code how to validate deposits end-to-end. The skill is invoked automatically
+by `callAnthropicWithSkills` and handles:
+
+- Download + SHA-256 hashing of the deposit
+- File classification (scripts, data, README, environment files)
+- Attempt to reproduce findings using `Bash`, `Read`, and `Grep` tools
+- Submission to the ValiChord bridge API via the bundled `valichord_bridge.py` script
+
 ## Project Structure
 
 ```
@@ -324,7 +411,8 @@ bun run worker   # Worker process
 │   │   ├── analysis/        # Data analysis (EDISON, BIO)
 │   │   ├── hypothesis/      # Hypothesis generation
 │   │   ├── reflection/      # Research reflection
-│   │   └── reply/           # User-facing responses
+│   │   ├── reply/           # User-facing responses
+│   │   └── valichord/       # ValiChord reproducibility validator
 │   ├── services/            # Business logic layer
 │   │   ├── chat/            # Chat-related services
 │   │   ├── queue/           # BullMQ job queue system
